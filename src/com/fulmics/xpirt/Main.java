@@ -19,6 +19,8 @@ package com.fulmics.xpirt;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
@@ -32,31 +34,33 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class Main {
-    private static final boolean DEBUG = false;
-
-    private static final String VERSION = "1.0";
+    private static final String VERSION = "2.0";
     private static final String ANDROID_MANIFEST_FILENAME = "AndroidManifest.xml";
 
+    private static final boolean DEBUG = false;
+
     public static void main(String[] args) {
+        // Print main information
         System.out.println("GetApkSignInfo v" + VERSION + " - get useful signature information out of apk/jar files");
         System.out.println("Copyright(c) 2017, Andrei Conache <conache.and@gmail.com>\n");
 
-        if (args.length < 1 || args.length > 1) {
-            System.out.println("Usage: java -jar GetApkSignInfo.jar <apk|jar>");
+        String apkPath = null;
+        // Accept first argument only
+        if (args.length == 1) {
+            apkPath = args[0];
+
+            // Check if file exists
+            File apkFile = new File(apkPath);
+            if (!apkFile.exists() || !apkFile.canRead()) {
+                System.err.println("Error: " + apkFile + " does not exists or cannot be read!");
+                System.exit(1);
+            }
+        } else {
+            System.out.println("Usage: java -jar GetApkSignInfo.jar <apk|jar>\r\n");
             System.exit(-1);
         }
 
-        // First argument is apk path
-        final String apkPath = args[0];
-
-        // Check if file exists
-        File apkFile = new File(apkPath);
-        if (!apkFile.exists()) {
-            System.out.println("File " + apkFile.getAbsolutePath() + " does not exist; ignoring!");
-            System.exit(-1);
-        }
-
-        System.out.println("File: " + apkPath);
+        System.out.print("Analyzing " + apkPath + ", please wait...");
 
         // Verify certificates
         Certificate[] certs = null;
@@ -67,7 +71,7 @@ public class Main {
             final JarEntry manifestEntry = jarFile.getJarEntry(ANDROID_MANIFEST_FILENAME);
             if (manifestEntry == null) {
                 System.err.println("Package " + apkPath + " has no manifest");
-                System.exit(-1);
+                System.exit(1);
             }
 
             final List<JarEntry> toVerify = new ArrayList<>();
@@ -93,12 +97,12 @@ public class Main {
                 if (entryCerts == null) {
                     System.err.println("Failed to collect certificates from " + apkPath + ", entryCerts is null");
                     jarFile.close();
-                    return;
+                    System.exit(1);
                 }
                 if (entryCerts.length == 0) {
                     System.err.println("Package " + apkPath + " has no certificates at entry " + jarEntry.getName());
                     jarFile.close();
-                    return;
+                    System.exit(1);
                 }
 
                 if (certs == null) {
@@ -117,7 +121,7 @@ public class Main {
                             System.err.println("Package has mismatched certificates at entry "
                                     + jarEntry.getName() + "; ignoring!");
                             jarFile.close();
-                            return;
+                            System.exit(1);
                         }
                     }
                 }
@@ -126,51 +130,65 @@ public class Main {
             // Close file
             jarFile.close();
 
-            if (certs == null) {
-                System.err.println("Package has no certificates; ignoring!");
-                System.exit(-1);
-            }
+            System.out.println(" verified successfully!\n");
 
             // Get signature information
-            int certsSize = certs.length;
-            if (certsSize > 0) {
-                for (int i = 0; i < certsSize; i++) {
-                    X509Certificate x509cert = (X509Certificate) certs[i];
+            if (certs != null && certs.length > 0) {
+                for (int i = 0; i < certs.length; i++) {
+                    Certificate cert = certs[i];
+                    String certType = cert.getType();
 
-                    String certType = x509cert.getType();
-                    String version = String.valueOf(x509cert.getVersion());
-                    String serialNumber = String.valueOf(x509cert.getSerialNumber());
-                    String certOwner = x509cert.getSubjectDN().getName();
-                    String certIssuer = x509cert.getIssuerDN().getName();
-                    if (certIssuer.equals(certOwner)) certIssuer = "Self-signed by Certificate Owner";
-                    String validity = x509cert.getNotBefore().toString() + " -> " + x509cert.getNotAfter().toString();
-                    String signatureAlgorithm = x509cert.getSigAlgName();
-                    String hashCode = "0x" + Integer.toHexString(x509cert.hashCode()) + " ("
-                            + String.valueOf(x509cert.hashCode()) + ")";
-                    String charSignature = "\n" + new String(convertToChars(x509cert.getEncoded()));
+                    // Get certificate information
+                    System.out.println("CERT #" + (i + 1));
+                    System.out.println("Cert Type: " + certType);
 
-                    System.out.println("\n"
-                            + "CERT #" + i + "\n"
-                            + "Cert Type: " + certType + "\n"
-                            + "Version: " + version + "\n"
-                            + "Serial Number: " + serialNumber + "\n"
-                            + "Cert Owner: " + certOwner + "\n"
-                            + "Issuer: " + certIssuer + "\n"
-                            + "Validity: " + validity + "\n"
-                            + "Signature Algorithm: " + signatureAlgorithm + "\n"
-                            + "Hash Code: " + hashCode + "\n"
-                            + "Signature Bits: " + charSignature);
+                    if (certType.equals("X.509")) {
+                        X509Certificate x509cert = (X509Certificate) cert;
+
+                        System.out.println("Version: " + String.valueOf(x509cert.getVersion()));
+                        System.out.println("Serial Number: " + String.valueOf(x509cert.getSerialNumber()));
+
+                        String certOwner = x509cert.getSubjectDN().getName();
+                        String certIssuer = x509cert.getIssuerDN().getName();
+                        System.out.println("Cert Owner: " + x509cert.getSubjectDN().getName());
+                        if (certIssuer.equals(certOwner)) certIssuer = "Self-signed by Certificate Owner";
+                        System.out.println("Cert Issuer: " + certIssuer);
+
+                        System.out.println("Validity: " + x509cert.getNotBefore().toString() + " -> "
+                                + x509cert.getNotAfter().toString());
+                        System.out.println("Signature Algorithm: " + x509cert.getSigAlgName());
+                    }
+
+                    System.out.println("Hash Code: 0x" + Integer.toHexString(cert.hashCode()) + " ("
+                            + String.valueOf(cert.hashCode()) + ")\n");
+
+                    // Get signature information
+                    byte[] certEncoded = cert.getEncoded();
+                    String md5Signature = calculateDigest(certEncoded,"MD5");
+                    String sha1Signature = calculateDigest(certEncoded, "SHA1");
+                    String charSignature = new String(bytesToChars(certEncoded));
+
+                    System.out.println("Signature MD5: " + md5Signature);
+                    System.out.println("Signature SHA1: " + sha1Signature);
+                    System.out.println("Signature Bits: " + charSignature);
+
+                    System.out.println("\nPublic Key: " + cert.getPublicKey().toString());
                 }
             } else {
                 System.err.println("Package has no certificates; ignoring!");
+                System.exit(1);
             }
-        } catch (CertificateEncodingException ex) {
-            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (IOException | RuntimeException ex) {
+        } catch (CertificateEncodingException e) {
+            System.err.println("Encoding exception " + e.getMessage());
+
+            if (DEBUG) {
+                Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, e);
+            }
+        } catch (IOException | RuntimeException e) {
             System.err.println("Exception reading " + apkPath);
 
             if (DEBUG) {
-                System.err.println("Exception: " + ex.getMessage());
+                e.printStackTrace();
             }
         }
     }
@@ -186,7 +204,10 @@ public class Main {
             return jarEntry.getCertificates();
         } catch (IOException | RuntimeException e) {
             System.err.println("Failed reading " + jarEntry.getName() + " in " + jarFile);
-            System.exit(-1);
+            if (DEBUG) {
+                e.printStackTrace();
+            }
+            System.exit(1);
         }
         return null;
     }
@@ -208,19 +229,35 @@ public class Main {
         return count;
     }
 
-    private static char[] convertToChars(byte[] signature) {
-        final int N = signature.length;
-        final int N2 = N * 2;
-        char[] text = new char[N2];
+    // Convert bytes to chars
+    private static char[] bytesToChars(byte[] signature) {
+        final int i = signature.length;
+        final int j = i * 2;
+        char[] text = new char[j];
 
-        for (int j = 0; j < N; j++) {
-            byte v = signature[j];
+        for (int k = 0; k < i; k++) {
+            byte v = signature[k];
             int d = (v >> 4) & 0xf;
-            text[j * 2] = (char) (d >= 10 ? ('a' + d - 10) : ('0' + d));
+            text[k * 2] = (char) (d >= 10 ? ('a' + d - 10) : ('0' + d));
             d = v & 0xf;
-            text[j * 2 + 1] = (char) (d >= 10 ? ('a' + d - 10) : ('0' + d));
+            text[k * 2 + 1] = (char) (d >= 10 ? ('a' + d - 10) : ('0' + d));
         }
-
         return text;
+    }
+
+    // Calculate digest given algorithm
+    private static String calculateDigest(byte[] signature, String algorithm) {
+        String digest = "unknown";
+        try
+        {
+            MessageDigest messageDigest = MessageDigest.getInstance(algorithm);
+            messageDigest.update(signature);
+            digest = new String(bytesToChars(messageDigest.digest()));
+        } catch (NoSuchAlgorithmException e) {
+            if (DEBUG) {
+                e.printStackTrace();
+            }
+        }
+        return digest;
     }
 }
