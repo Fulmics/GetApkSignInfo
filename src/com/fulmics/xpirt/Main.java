@@ -45,8 +45,8 @@ public class Main {
         System.out.println("Copyright(c) 2017, Andrei Conache <conache.and@gmail.com>\n");
 
         String apkPath = null;
-        // Accept first argument only
         if (args.length == 1) {
+            // Accept first argument only
             apkPath = args[0];
 
             // Check if file exists
@@ -181,32 +181,26 @@ public class Main {
         } catch (CertificateEncodingException e) {
             System.err.println("Encoding exception " + e.getMessage());
 
-            if (DEBUG) {
-                Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, e);
-            }
+            if (DEBUG) Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, e);
         } catch (IOException | RuntimeException e) {
             System.err.println("Exception reading " + apkPath);
 
-            if (DEBUG) {
-                e.printStackTrace();
-            }
+            if (DEBUG) e.printStackTrace();
         }
     }
 
     private static Certificate[] loadCertificates(JarFile jarFile, JarEntry jarEntry) {
         InputStream is;
         try {
-            // We must read the stream for the JarEntry to retrieve
-            // its certificates.
+            // We must read the stream for the JarEntry to retrieve its certificates
             is = jarFile.getInputStream(jarEntry);
             readFullyIgnoringContents(is);
 
             return jarEntry.getCertificates();
         } catch (IOException | RuntimeException e) {
             System.err.println("Failed reading " + jarEntry.getName() + " in " + jarFile);
-            if (DEBUG) {
-                e.printStackTrace();
-            }
+
+            if (DEBUG) e.printStackTrace();
             System.exit(1);
         }
         return null;
@@ -215,9 +209,7 @@ public class Main {
     private static AtomicReference<byte[]> sBuffer = new AtomicReference<>();
     private static long readFullyIgnoringContents(InputStream in) throws IOException {
         byte[] buffer = sBuffer.getAndSet(null);
-        if (buffer == null) {
-            buffer = new byte[4096];
-        }
+        if (buffer == null) buffer = new byte[4096];
 
         int n;
         int count = 0;
@@ -254,9 +246,7 @@ public class Main {
             messageDigest.update(signature);
             digest = new String(bytesToChars(messageDigest.digest()));
         } catch (NoSuchAlgorithmException e) {
-            if (DEBUG) {
-                e.printStackTrace();
-            }
+            if (DEBUG) e.printStackTrace();
         }
         return digest;
     }
